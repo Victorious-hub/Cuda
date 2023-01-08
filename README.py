@@ -85,6 +85,18 @@ def rege():
         except:
             return flash('Check your password confirm or email, or urename')
     return render_template('registrate.html',title='SEARCHER.',form=form)
+@app.route('/donate')
+def donate():
+    api = Api(merchant_id=1396424,
+          secret_key='test')
+    checkout = Checkout(api=api)
+    data = {
+    "currency": "USD",
+    "amount": 1000
+    }
+    url = checkout.url(data).get('checkout_url')
+    return  redirect(url)
+
 @app.route('/authentication',methods=['GET','POST'])
 def authorization():
     #if current_user.is_authenticated:

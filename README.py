@@ -22,6 +22,7 @@ from flask_restful import Api,Resource,fields,marshal_with
 from flask_marshmallow import Marshmallow
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 from flask_bootstrap import Bootstrap
+from datetime import datetime
 app = Flask(__name__)
 db = SQLAlchemy(app)
 login = LoginManager()
@@ -33,12 +34,21 @@ app.config['RECAPTCHA_PRIVATE_KEY'] = '6LexA5IhAAAAABRWx_a4eppLOurnL4jS0LBYPNLm'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///info.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 Bootstrap(app)
-class DataBase1(UserMixin,db.Model):
+class User(UserMixin,db.Model):
     id = db.Column(db.Integer,primary_key = True)
     nick = db.Column(db.Text,nullable = False)
     email = db.Column(db.Text,nullable = False)
     password = db.Column(db.Integer,nullable = False)
     confirm_p = db.Column(db.Integer,nullable = False)
+    note = db.relationship('Post_data',backref='author',lazy = True)
+    def __repr__(self):
+       return '<Article %r>' % self.id
+class Post_data(UserMixin,db.Model):
+    id = db.Column(db.Integer,primary_key = True)
+    title = db.Column(db.Text,nullable = False)
+    content = db.Column(db.Text,nullable = False)
+    date_posted = db.Column(db.DateTime,nullable = False, default = datetime.utcnow)
+    user_id = db.Column(db.Integer,db.ForeignKey('user.id'),nullable = False)
     def __repr__(self):
        return '<Article %r>' % self.id
 class Registrate(FlaskForm):
@@ -53,30 +63,35 @@ class Registrate(FlaskForm):
     password = PasswordField('Password',validators=[DataRequired()])
     confirm_p = PasswordField('Confrim password',validators=[DataRequired(),EqualTo('password')])
     submit = SubmitField('Submit')
+
+class Note_form(FlaskForm):
+    title = StringField("Title",validators=[DataRequired(),Length(min = 2, max = 15)])
+    content = TextAreaField("Title",validators=[DataRequired(),Length(min = 2, max = 300)])
+    submit = SubmitField('Submit')
+
 class Authentication(FlaskForm):
     nick = StringField("Username",validators=[DataRequired(),Length(min = 2, max = 15)])
     email = StringField('Email',validators=[DataRequired(),Email()])
     password = PasswordField('Password',validators=[DataRequired()])
     submit = SubmitField('Submit')
+
 @app.route('/website')
 def website():
     return render_template('Cuda.html')
 @login.user_loader
 def load_user(id):
-    return DataBase1.query.get(int(id))
+    return User.query.get(int(id))
 @app.route('/registration',methods=['GET','POST'])
 def rege():
-    if current_user.is_authenticated:
-      return redirect(url_for('website'))
     form = Registrate()
     if form.validate_on_submit():
         hash = generate_password_hash(form.password.data)
         hash1 = generate_password_hash(form.confirm_p.data)
-        user = DataBase1(nick = form.nick.data,email = form.email.data,password = hash,confirm_p=hash1)
+        user = User(nick = form.nick.data,email = form.email.data,password = hash,confirm_p=hash1)
         try:
-            if DataBase1.query.filter_by(email=form.email.data).first():
+            if User.query.filter_by(email=form.email.data).first():
                 flash('This email already exists')
-            elif DataBase1.query.filter_by(nick=form.nick.data).first():
+            elif User.query.filter_by(nick=form.nick.data).first():
                    flash('This username already exists')
             else:
              db.session.add(user)
@@ -85,6 +100,50 @@ def rege():
         except:
             return flash('Check your password confirm or email, or urename')
     return render_template('registrate.html',title='SEARCHER.',form=form)
+@app.errorhandler(401)
+def unauthorized(error):
+    return "<h1>Man, what the fuck are you doing here?</h1>"
+
+@app.route('/authentication',methods=['GET','POST'])
+def authorization():
+    if current_user.is_authenticated:
+      return redirect(url_for('authorized'))
+    form = Authentication()
+    if form.validate_on_submit():
+       email_validation =User.query.filter_by(email = form.email.data).first()
+       nickname_validation = User.query.filter_by(nick = form.nick.data).first()
+       if not  nickname_validation:
+           flash(f"Your nickname is invalid")
+       elif not email_validation:
+           flash(f"Your email is invalid")
+       elif not  check_password_hash(email_validation.password,form.password.data):
+           flash(f"Your password is invalid")
+       else:
+           login_user(email_validation,nickname_validation)
+           return redirect(url_for('authorized'))
+    return render_template('authentication.html',form=form)
+
+@app.route("/authorized_website")
+@login_required
+def authorized():
+    return render_template("authorized_page.html",title = "Cuda")
+@app.route('/home_note')
+def home_note():
+    note = Post_data.query.all()
+    return render_template('notes.html',note = note)
+@app.route("/create_post/new",methods=["GET","POST"])
+@login_required
+def create_post():
+    form = Note_form()
+    if form.validate_on_submit():
+        notes = Post_data(title = form.title.data,content = form.content.data,author = current_user)
+        try:
+           db.session.add(notes)
+           db.session.commit()  
+           return redirect(url_for("home_note"))
+        except:
+           flash("You are baklan")
+    return render_template("create_post.html",title='Cuda',form=form)
 @app.route('/donate')
 def donate():
     api = Api(merchant_id=1396424,
@@ -96,24 +155,5 @@ def donate():
     }
     url = checkout.url(data).get('checkout_url')
     return  redirect(url)
-
-@app.route('/authentication',methods=['GET','POST'])
-def authorization():
-    #if current_user.is_authenticated:
-     # return redirect(url_for('website'))
-    form = Authentication()
-    if form.validate_on_submit():
-       email_validation = DataBase1.query.filter_by(email = form.email.data).first()
-       nickname_validation = DataBase1.query.filter_by(nick = form.nick.data).first()
-       if not  nickname_validation:
-           flash(f"Your nickname is invalid")
-       elif not email_validation:
-           flash(f"Your email is invalid")
-       elif not  check_password_hash(email_validation.password,form.password.data):
-           flash(f"Your password is invalid")
-       else:
-           login_user(email_validation,nickname_validation)
-           return redirect(url_for('website'))
-    return render_template('authentication.html',form=form)
 if __name__ == '__main__':
-   app.run(debug = True)
+  app.run(debug = True)

@@ -143,7 +143,43 @@ def create_post():
            return redirect(url_for("home_note"))
         except:
            flash("You are baklan")
-    return render_template("create_post.html",title='Cuda',form=form)
+    return render_template("create_post.html",title='Cuda',form=form,legend = "New note")
+
+@app.route("/create_post/<int:post_id>",methods=["GET","POST"])
+@login_required
+def post_id(post_id):
+    post = Post_data.query.get_or_404(post_id)
+    return render_template("your_post.html",title='Cuda',post = post)
+
+@app.route("/create_post/<int:post_id>/update",methods=["GET","POST"])
+@login_required
+def update_post(post_id):
+    post = Post_data.query.get_or_404(post_id)
+    if post.author != current_user:
+        abort(403)
+    form  = Note_form()
+    if form.validate_on_submit():
+        post.title =  form.title.data
+        post.content = form.content.data
+        db.session.commit()
+        return redirect(url_for("home_note"))
+    elif request.method == "GET":
+       form.title.data = post.title
+       form.content.data = post.content
+    return render_template("create_post.html",title='Update note',form=form,legend = "Update your note")
+
+@app.route("/create_post/<int:post_id>/delete")
+@login_required
+def delete_post(post_id):
+    post = Post_data.query.get_or_404(post_id)
+    form  = Note_form()
+    if post.author != current_user:
+        abort(403)
+    db.session.delete(post)
+    db.session.commit()
+    return redirect(url_for("home_note"))
+
+
 @app.route('/donate')
 def donate():
     api = Api(merchant_id=1396424,
